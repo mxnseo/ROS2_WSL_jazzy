@@ -57,7 +57,7 @@ def generate_launch_description():
 
         # Launch arguments
         DeclareLaunchArgument(
-            'use_sim_time', default_value='false',
+            'use_sim_time', default_value='true',
             description='Use simulation (Gazebo) clock if true'),
 
         DeclareLaunchArgument(
@@ -99,7 +99,7 @@ def generate_launch_description():
             package='rtabmap_util', executable='point_cloud_xyz', output='screen',
             parameters=[{'decimation': 2,
                          'max_depth': 3.0,
-                         'voxel_size': 0.02}],
+                         'voxel_size': 0.3}],
             remappings=[('depth/image', '/camera/depth/image_raw'),
                         ('depth/camera_info', '/camera/camera_info'),
                         ('cloud', '/camera/cloud')]),

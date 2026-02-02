@@ -40,8 +40,8 @@ def launch_setup(context, *args, **kwargs):
         os.environ['TURTLEBOT3_MODEL'] = 'waffle' # waffle로 설정됨
 
     # Directories --> 디렉터리 찾는 부분
-    # pkg_turtlebot3_gazebo = get_package_share_directory( # 터틀봇 시뮬레이터 관련 경로
-    #     'turtlebot3_gazebo')
+    pkg_turtlebot3_gazebo = get_package_share_directory( # 터틀봇 시뮬레이터 관련 경로
+        'turtlebot3_gazebo')
     pkg_nav2_bringup = get_package_share_directory( # 네비게이션 관련 경로
         'nav2_bringup')
     pkg_rtabmap_demos = get_package_share_directory( # 현재 패키지 경로
@@ -54,8 +54,8 @@ def launch_setup(context, *args, **kwargs):
     )
 
     # Paths --> 실행할 런치 파일들의 경로
-    # gazebo_launch = PathJoinSubstitution( # turtlebot3_gazebo 패키지의 launch 폴더 안의 'turtlebot3_[world이름].launch.py'
-    #     [pkg_turtlebot3_gazebo, 'launch', f'turtlebot3_{world}.launch.py'])
+    gazebo_launch = PathJoinSubstitution( # turtlebot3_gazebo 패키지의 launch 폴더 안의 'turtlebot3_[world이름].launch.py'
+        [pkg_turtlebot3_gazebo, 'launch', f'turtlebot3_{world}.launch.py'])
 
     nav2_launch = PathJoinSubstitution( # nav2_bringup 패키지의 navigation_launch.py
         [pkg_nav2_bringup, 'launch', 'navigation_launch.py'])
@@ -67,13 +67,13 @@ def launch_setup(context, *args, **kwargs):
         [pkg_rtabmap_demos, 'launch', 'turtlebot3', 'turtlebot3_rgbd_scan.launch.py'])
 
     # Includes --> 런치 파일 include 설정
-    # gazebo = IncludeLaunchDescription( # 로봇의 초기 위치(x, y)를 인자로 넘김
-    #     PythonLaunchDescriptionSource([gazebo_launch]),
-    #     launch_arguments=[
-    #         ('x_pose', LaunchConfiguration('x_pose')),
-    #         ('y_pose', LaunchConfiguration('y_pose'))
-    #     ]
-    # )
+    gazebo = IncludeLaunchDescription( # 로봇의 초기 위치(x, y)를 인자로 넘김
+        PythonLaunchDescriptionSource([gazebo_launch]),
+        launch_arguments=[
+            ('x_pose', LaunchConfiguration('x_pose')),
+            ('y_pose', LaunchConfiguration('y_pose'))
+        ]
+    )
     nav2 = IncludeLaunchDescription( # 시뮬레이션 시간(use_sim_time)을 true로 설정하고, 파라미터 파일을 넘김
         PythonLaunchDescriptionSource([nav2_launch]),
         launch_arguments=[
@@ -81,9 +81,9 @@ def launch_setup(context, *args, **kwargs):
             ('params_file', nav2_params_file)
         ]
     )
-    # rviz = IncludeLaunchDescription( # Rviz 실행
-    #     PythonLaunchDescriptionSource([rviz_launch]),
-    # )
+    # # rviz = IncludeLaunchDescription( # Rviz 실행
+    # #     PythonLaunchDescriptionSource([rviz_launch]),
+    # # )
     rtabmap = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([rtabmap_launch]),
         launch_arguments=[
@@ -126,7 +126,7 @@ def launch_setup(context, *args, **kwargs):
         nav2,
         # rviz,
         rtabmap,
-        # gazebo
+        gazebo
     ]
 
 

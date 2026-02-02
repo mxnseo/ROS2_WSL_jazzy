@@ -76,12 +76,15 @@ def launch_setup(context, *args, **kwargs):
     
         SetParameter(name='use_sim_time', value=LaunchConfiguration('use_sim_time')),
         # 'use_sim_time' will be set on all nodes following the line above
-    
+        Node(
+            package='tf2_ros', executable='static_transform_publisher',
+            arguments=['0', '0', '2.4', '0', '0', '0', 'hero', 'lidar']
+        ),
         # Relays RGB-Depth
         Node(
             package='image_transport', executable='republish', name='republish_rgb',
             condition=IfCondition(PythonExpression(["'", LaunchConfiguration('stereo'), "' != 'true' and ('", LaunchConfiguration('subscribe_rgbd'), "' != 'true' or '", LaunchConfiguration('rgbd_sync'),"'=='true') and '", LaunchConfiguration('compressed'), "' == 'true'"])),
-            remappings=[
+            remappings=[ 
                 (['in/', LaunchConfiguration('rgb_image_transport')], [LaunchConfiguration('rgb_topic'), '/', LaunchConfiguration('rgb_image_transport')]),
                 ('out', LaunchConfiguration('rgb_topic_relay'))], 
             arguments=[LaunchConfiguration('rgb_image_transport'), 'raw'],
@@ -250,42 +253,60 @@ def launch_setup(context, *args, **kwargs):
             namespace=LaunchConfiguration('namespace')),
             
         # ICP odometry
+# ---------------------------------------------------------
+        # 2. Odometry (설정 강제 주입 버전)
+        # ---------------------------------------------------------
         Node(
-            package='rtabmap_odom', executable='icp_odometry', name="icp_odometry", output="screen",
-            emulate_tty=True,
-            condition=IfCondition(LaunchConfiguration('icp_odometry')),
+            package='rtabmap_odom', executable='icp_odometry', output='screen',
             parameters=[{
-                "frame_id": LaunchConfiguration('frame_id'),
-                "odom_frame_id": LaunchConfiguration('vo_frame_id'),
-                "publish_tf": LaunchConfiguration('publish_tf_odom'),
-                "ground_truth_frame_id": LaunchConfiguration('ground_truth_frame_id').perform(context),
-                "ground_truth_base_frame_id": LaunchConfiguration('ground_truth_base_frame_id').perform(context),
-                "wait_for_transform": LaunchConfiguration('wait_for_transform'),
-                "wait_imu_to_init": LaunchConfiguration('wait_imu_to_init'),
-                "always_check_imu_tf": LaunchConfiguration('always_check_imu_tf'),
-                "approx_sync": LaunchConfiguration('approx_sync'),
-                "config_path": LaunchConfiguration('cfg').perform(context),
-                "topic_queue_size": LaunchConfiguration('topic_queue_size'),
-                "sync_queue_size": LaunchConfiguration('sync_queue_size'),
-                "qos": LaunchConfiguration('qos_image'),
-                "qos_imu": LaunchConfiguration('qos_imu'),
-                "guess_frame_id": LaunchConfiguration('odom_guess_frame_id').perform(context),
-                "guess_min_translation": LaunchConfiguration('odom_guess_min_translation'),
-                "guess_min_rotation": LaunchConfiguration('odom_guess_min_rotation'),
-                "always_process_most_recent_frame": LaunchConfiguration('odom_always_process_most_recent_frame')}],
-            remappings=[
-                ("scan", LaunchConfiguration('scan_topic')),
-                ("scan_cloud", LaunchConfiguration('scan_cloud_topic')),
-                ("odom", LaunchConfiguration('odom_topic')),
-                ("imu", LaunchConfiguration('imu_topic'))],
-            arguments=[LaunchConfiguration("args"), LaunchConfiguration("odom_args"), "--ros-args", "--log-level", [LaunchConfiguration('namespace'), '.icp_odometry:=', LaunchConfiguration('odom_log_level')], "--log-level", ['icp_odometry:=', LaunchConfiguration('odom_log_level')]],
-            prefix=LaunchConfiguration('launch_prefix'),
-            namespace=LaunchConfiguration('namespace')),
+                'frame_id': 'hero',
+                'odom_frame_id': 'odom',
+                'wait_for_transform': 1.0,      # 0.8 -> 1.0 (시간차 여유)
+                'use_sim_time': True,
+                'subscribe_imu': False,
 
+                # [★핵심] 이동 거리 제한 해제
+                'Icp/MaxTranslation': '0',      
+                'Icp/MaxRotation': '0',         
+
+                # [전략 유지]
+                'Odom/Strategy': '0',           
+                'Odom/GuessMotion': 'true',     
+                'Odom/ResetCountdown': '1',     # 리셋 방지
+                
+                # [속도/정확도 튜닝]
+                'Icp/VoxelSize': '0.5',         
+                'Icp/CorrespondenceRatio': '0.01', 
+                'Icp/PointToPlane': 'true', 
+                'Icp/PointToPlaneK': '20',
+                'Icp/MaxCorrespondenceDistance': '1.5',
+                'Icp/PMOutlierRatio': '0.7', 
+                
+                'Odom/ScanKeyFrameThr': '0.8',
+                'OdomF2M/ScanSubtractRadius': '0.5',
+                'OdomF2M/ScanMaxSize': '10000',
+                
+                'Reg/Force3DoF': 'true', 
+                
+                'subscribe_scan_cloud': True, 
+                'scan_cloud_max_points': 0, 
+                'queue_size': 500,
+                'approx_sync': True,
+            }],
+            remappings=[
+                ('scan_cloud', '/carla/hero/lidar'),
+                ('odom', '/odom')
+            ]
+        ),
+
+# ---------------------------------------------------------
+        # 3. SLAM (RTAB-Map Main Node) - LiDAR Loop Closure 강제 설정 적용
+        # ---------------------------------------------------------
         Node(
             package='rtabmap_slam', executable='rtabmap', name="rtabmap", output="screen",
             emulate_tty=True,
             parameters=[{
+                # [기존 시스템 설정 유지]
                 "subscribe_depth": LaunchConfiguration('depth'),
                 "subscribe_rgbd": LaunchConfiguration('subscribe_rgbd'),
                 "subscribe_rgb": LaunchConfiguration('subscribe_rgb'),
@@ -302,28 +323,52 @@ def launch_setup(context, *args, **kwargs):
                 "use_action_for_goal": LaunchConfiguration('use_action_for_goal'),
                 "ground_truth_frame_id": LaunchConfiguration('ground_truth_frame_id').perform(context),
                 "ground_truth_base_frame_id": LaunchConfiguration('ground_truth_base_frame_id').perform(context),
-                "odom_tf_angular_variance": LaunchConfiguration('odom_tf_angular_variance'),
-                "odom_tf_linear_variance": LaunchConfiguration('odom_tf_linear_variance'),
-                "odom_sensor_sync": LaunchConfiguration('odom_sensor_sync'),
                 "wait_for_transform": LaunchConfiguration('wait_for_transform'),
-                "database_path": LaunchConfiguration('database_path'),
                 "approx_sync": LaunchConfiguration('approx_sync'),
-                "config_path": LaunchConfiguration('cfg').perform(context),
                 "topic_queue_size": LaunchConfiguration('topic_queue_size'),
                 "sync_queue_size": LaunchConfiguration('sync_queue_size'),
                 "qos_image": LaunchConfiguration('qos_image'),
                 "qos_scan": LaunchConfiguration('qos_scan'),
                 "qos_odom": LaunchConfiguration('qos_odom'),
-                "qos_camera_info": LaunchConfiguration('qos_camera_info'),
-                "qos_imu": LaunchConfiguration('qos_imu'),
-                "qos_gps": LaunchConfiguration('qos_gps'),
-                "qos_env_sensor": LaunchConfiguration('qos_env_sensor'),
-                "qos_user_data": LaunchConfiguration('qos_user_data'),
-                "scan_normal_k": LaunchConfiguration('scan_normal_k'),
-                "landmark_linear_variance": LaunchConfiguration('tag_linear_variance'),
-                "landmark_angular_variance": LaunchConfiguration('tag_angular_variance'),
-                "Mem/IncrementalMemory": ConditionalText("true", "false", IfCondition(PythonExpression(["'", LaunchConfiguration('localization'), "' != 'true'"]))._predicate_func(context)).perform(context),
-                "Mem/InitWMWithAllNodes": ConditionalText("true", "false", IfCondition(PythonExpression(["'", LaunchConfiguration('localization'), "' == 'true'"]))._predicate_func(context)).perform(context)
+                
+                # ========================================================
+                # [★여기가 핵심] 루프 클로저를 위한 파라미터 "강제 주입"
+                # 외부 argument나 기본값에 휘둘리지 않게 직접 값을 넣습니다.
+                # ========================================================
+
+                # 1. [데이터 소환 제한 해제] (가장 중요)
+                # 로그에 뜨던 "MaxRepublished=2"를 "0"(무제한)으로 강제 변경합니다.
+                # 이게 되어야 과거 데이터를 몽땅 꺼내서 현재 위치랑 비교할 수 있습니다.
+                "Rtabmap/MaxRepublished": "0", 
+
+                # 2. [거리 기반 감지] (카메라 없이 라이다로 찾기)
+                "RGBD/ProximityBySpace": "true",    # 거리(Space)로 루프 감지
+                "RGBD/LocalRadius": "15.0",         # 반경 15m 이내 과거 데이터 탐색
+                "RGBD/ProximityPathMaxNeighbors": "1", # 바로 직전 노드만 제외하고 다 검사
+
+                # 3. [기억력 조절] (단기 기억 최소화)
+                # 최근 10개 노드만 지나면 바로 "과거 기억"으로 넘겨서 매칭 대상으로 만듭니다.
+                "Mem/STMSize": "10", 
+
+                # 4. [포인트 클라우드 품질] (필터링 끄기)
+                # 점을 솎아내지 않고(0) 원본 그대로 씁니다. 데이터가 많아야 매칭이 잘 됩니다.
+                "Icp/VoxelSize": "0", 
+                "Mem/BinDataKept": "true",          # 라이다 데이터 절대 삭제 금지
+
+                # 5. [매칭 조건 완화] (대충 맞아도 합격)
+                "Icp/CorrespondenceRatio": "0.1",   # 10%만 일치해도 루프 클로저 인정
+                "Icp/MaxCorrespondenceDistance": "2.0", # 2m 오차까지 허용
+                "Icp/PointToPlane": "false",        # 점-대-점 매칭 (단순하고 강력함)
+
+                # 6. [이동/회전 제한] (2D 자동차 모드)
+                "Reg/Strategy": "1",                # 1=ICP (LiDAR 사용)
+                "Reg/Force3DoF": "true",            # Z축(높이) 무시, 2D 평면 이동 가정
+                "Optimizer/Slam2D": "true",         # 그래프 최적화도 2D로 수행
+                "Reg/VarianceFromInliers": "999.0", # 분산값 무시하고 강제 병합
+
+                # 7. [기타]
+                "Rtabmap/StartNewMapOnLoopClosure": "false",
+                "Mem/UseOdomFeatures": "false"
             }],
             remappings=[
                 ("map", LaunchConfiguration('map_topic')),
@@ -500,8 +545,8 @@ def generate_launch_description():
         DeclareLaunchArgument('scan_normal_k',        default_value='0',           description=''),
         
         # Odometry
-        DeclareLaunchArgument('visual_odometry',            default_value='true',  description='Launch rtabmap visual odometry node.'),
-        DeclareLaunchArgument('icp_odometry',               default_value='false', description='Launch rtabmap icp odometry node.'),
+        DeclareLaunchArgument('visual_odometry',            default_value='false',  description='Launch rtabmap visual odometry node.'),
+        DeclareLaunchArgument('icp_odometry',               default_value='true', description='Launch rtabmap icp odometry node.'),
         DeclareLaunchArgument('odom_topic',                 default_value='odom',  description='Odometry topic name.'),
         DeclareLaunchArgument('vo_frame_id',                default_value=LaunchConfiguration('odom_topic'), description='Visual/Icp odometry frame ID for TF.'),
         DeclareLaunchArgument('publish_tf_odom',            default_value='true',  description=''),
