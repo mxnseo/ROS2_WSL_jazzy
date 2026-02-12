@@ -110,6 +110,19 @@ class CenterPointNode(Node):
         scores = pred_inst.scores_3d.cpu().numpy()
         labels = pred_inst.labels_3d.cpu().numpy()
         
+        class_names = {
+            0: 'car',
+            1: 'truck',
+            2: 'construction_vehicle',
+            3: 'bus',
+            4: 'trailer',
+            5: 'barrier',
+            6: 'motorcycle',
+            7: 'bicycle',
+            8: 'pedestrian',
+            9: 'traffic_cone',
+        }
+
         detection_array = Detection3DArray()
         detection_array.header = msg.header
         
@@ -117,14 +130,16 @@ class CenterPointNode(Node):
             if scores[i] < 0.5: continue
             
             cx, cy, cz, l, w, h, rot = bbox[:7]
+
             label_idx = int(labels[i])
             score = float(scores[i])
-            
+            class_string = class_names.get(label_idx, str(label_idx))
+
             detection = Detection3D()
             detection.header = msg.header
             
             hypothesis = ObjectHypothesisWithPose()
-            hypothesis.hypothesis.class_id = str(label_idx)
+            hypothesis.hypothesis.class_id = class_string
             hypothesis.hypothesis.score = score
             detection.results.append(hypothesis)
             
